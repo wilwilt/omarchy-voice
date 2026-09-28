@@ -29,6 +29,19 @@ def _tick(ok: bool) -> str:
 
 # --- commands ---------------------------------------------------------------
 
+def cmd_announce(args, config) -> int:
+    """One desktop notification and one spoken line. Used when a kitchen timer ends."""
+    from .feedback import Feedback
+    text = " ".join(args.text).strip()
+    if not text:
+        print("error: announce needs the words to say", file=sys.stderr)
+        return 2
+    feedback = Feedback(config)
+    feedback.notify(text, urgency="normal")
+    feedback._speak_now(text)
+    return 0
+
+
 def cmd_say(args, config) -> int:
     """One command, typed instead of spoken. The whole pipeline minus the mic."""
     text = " ".join(args.text)
@@ -323,6 +336,10 @@ def build_parser() -> argparse.ArgumentParser:
         if action == "resume":
             command.add_argument("--guidance", default="")
         command.set_defaults(func=cmd_task)
+
+    p = sub.add_parser("announce", help="show one notification and say one line")
+    p.add_argument("text", nargs="+")
+    p.set_defaults(func=cmd_announce)
 
     p = sub.add_parser("say", help="run one command as if it had been spoken")
     p.add_argument("text", nargs="+")

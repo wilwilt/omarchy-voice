@@ -820,6 +820,15 @@ class RealtimeSession:
         text = text.strip()
         if not text:
             return "nothing to say"
+        from .kitchen_timers import parse_utterance
+        if parse_utterance(text) is not None:
+            result = await asyncio.to_thread(
+                self.executor.call, "kitchen_timer", {"utterance": text})
+            said = result.output if result.ok else result.as_tool_result()
+            self.feedback.log(f"timer   {text!r} -> {said!r}")
+            self.feedback.notify(said)
+            self.feedback.speak(said)
+            return said
         self._user_turn_since_hold = True
         self._tool_rounds = 0
         self._rate_limit_retries = 0

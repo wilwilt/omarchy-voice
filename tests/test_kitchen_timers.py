@@ -1,0 +1,142 @@
+"""Spoken kitchen timer phrases hit the same list the glass polls.
+
+The HTTP server here is a stub. It does not call Sonos and it does not start
+Kitchen Command.
+"""
+import json
+import sys
+import threading
+import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from omarchy_voice.kitchen_timers import KitchenClient, parse_utterance, reply_to
+
+
+class Recorder(BaseHTTPRequestHandler):
+    records = []
+    timers = []
+
+    def log_message(self, fmt, *args):
+        return
+
+    def _read(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if not length:
+            return {}
+        return json.loads(self.rfile.read(length).decode())
+
+    def _send(self, code, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        Recorder.records.append(("GET", self.path, dict(self.headers), None))
+        self._send(200, {"ok": True, "timers": list(Recorder.timers)})
+
+    def do_POST(self):
+        payload = self._read()
+        Recorder.records.append(("POST", self.path, dict(self.headers), payload))
+        if self.path == "/api/kitchen/timers":
+            raw_name = str(payload.get("name") or "Timer")
+            shown = "Timer" if raw_name.lower() == "timer" else " ".join(
+                part[:1].upper() + part[1:] for part in raw_name.split())
+            timer = {
+                "id": "t1",
+                "name": shown,
+                "minutes": payload.get("minutes"),
+                "status": "running",
+                "source": payload.get("source"),
+                "remainingSeconds": int(payload.get("minutes") or 0) * 60,
+                "speaker": None,
+            }
+            Recorder.timers.append(timer)
+            self._send(200, {"ok": True, "timer": timer, "timers": list(Recorder.timers)})
+            return
+        if self.path == "/api/kitchen/timers/cancel":
+            if payload.get("all"):
+                cleared = [timer["name"] for timer in Recorder.timers]
+                Recorder.timers.clear()
+                self._send(200, {"ok": True, "cleared": len(cleared), "names": cleared, "timers": []})
+                return
+            name = str(payload.get("name") or "").lower()
+            kept = []
+            gone = []
+            for timer in Recorder.timers:
+                if timer["name"].lower() == name and not gone:
+                    gone.append(timer["name"])
+                else:
+                    kept.append(timer)
+            Recorder.timers[:] = kept
+            if not gone:
+                self._send(404, {"ok": False, "error": f"no timer named {payload.get('name')}"})
+                return
+            self._send(200, {"ok": True, "cleared": 1, "names": gone, "timers": kept})
+            return
+        self._send(404, {"ok": False, "error": "no such route"})
+
+
+class PhraseTests(unittest.TestCase):
+    def setUp(self):
+        Recorder.records = []
+        Recorder.timers = []
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Recorder)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        host, port = self.server.server_address
+        self.client = KitchenClient(f"http://{host}:{port}")
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def test_the_start_phrases_create_a_voice_timer(self):
+        cases = [
+            ("pasta timer ten minutes", "pasta", 10),
+            ("set a ten minute pasta timer", "pasta", 10),
+            ("timer for ten minutes", "Timer", 10),
+            ("twenty minute rice timer", "rice", 20),
+        ]
+        for phrase, name, minutes in cases:
+            Recorder.timers.clear()
+            Recorder.records.clear()
+            with self.subTest(phrase=phrase):
+                parsed = parse_utterance(phrase)
+                self.assertEqual(parsed["action"], "start")
+                self.assertEqual(parsed["minutes"], minutes)
+                said = reply_to(phrase, self.client)
+                self.assertIn(str(minutes), said)
+                method, path, headers, body = Recorder.records[-1]
+                self.assertEqual((method, path), ("POST", "/api/kitchen/timers"))
+                self.assertEqual(headers["X-Kitchen-Touch"], "1")
+                self.assertEqual(body["source"], "voice")
+                self.assertEqual(body["minutes"], minutes)
+                self.assertEqual(body["name"].lower(), name.lower())
+
+    def test_check_and_cancel_use_the_same_list(self):
+        reply_to("pasta timer ten minutes", self.client)
+        reply_to("set a twenty minute rice timer", self.client)
+        how = reply_to("how long on the pasta", self.client)
+        self.assertIn("Pasta has 10 minutes left.", how)
+        each = reply_to("check timers", self.client)
+        self.assertIn("Pasta has 10 minutes left.", each)
+        self.assertIn("Rice has 20 minutes left.", each)
+        one = reply_to("cancel the pasta timer", self.client)
+        self.assertEqual(one, "Cancelled the Pasta timer.")
+        rest = reply_to("cancel all timers", self.client)
+        self.assertEqual(rest, "Cancelled 1 timer.")
+        self.assertEqual(reply_to("check timers", self.client), "No timers.")
+
+    def test_a_clock_reminder_is_not_a_timer(self):
+        self.assertIsNone(parse_utterance("remind me at four to call the vet"))
+        self.assertIsNone(reply_to("remind me at four", self.client))
+        self.assertEqual(Recorder.records, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

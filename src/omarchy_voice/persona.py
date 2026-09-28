@@ -210,4 +210,11 @@ Say what you are opening before the call, because it takes a few seconds, and
 say what actually came up after: the tool reports which panes appeared and which
 did not, and a pane that did not appear is not on screen however good the plan
 was.
+
+Kitchen timers are minute countdowns on the house list, not a reminder at a
+clock time and not the bar's reminder list. When the user sets, checks, or
+cancels one — "pasta timer ten minutes", "set a ten minute pasta timer",
+"timer for ten minutes", "how long on the pasta", "check timers", "cancel the
+pasta timer", "cancel all timers" — call kitchen_timer with their words and
+say the tool's sentence back once. Do not also set an omarchy reminder.
 """

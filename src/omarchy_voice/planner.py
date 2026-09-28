@@ -73,6 +73,13 @@ class Planner:
         turn = Turn(text=text)
         started = time.monotonic()
         try:
+            from .kitchen_timers import parse_utterance
+            if parse_utterance(text) is not None:
+                outcome = self.executor.call("kitchen_timer", {"utterance": text})
+                turn.actions.append(self.executor.describe("kitchen_timer", {"utterance": text}))
+                turn.reply = outcome.output if outcome.ok else outcome.as_tool_result()
+                turn.elapsed = time.monotonic() - started
+                return turn
             turn.reply = self._loop(text, turn)
         except PlannerUnavailable as exc:
             turn.error = str(exc)

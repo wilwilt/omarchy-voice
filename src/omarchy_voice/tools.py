@@ -912,6 +912,29 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "kitchen_timer",
+        "description": (
+            "Kitchen countdown timers on the house list the glass and the phone share. "
+            "Use this for a named minute timer: 'pasta timer ten minutes', "
+            "'set a ten minute pasta timer', 'timer for ten minutes', "
+            "'how long on the pasta', 'check timers', 'cancel the pasta timer', "
+            "'cancel all timers'. Pass the user's words as utterance. "
+            "This is not a reminder at a clock time and it is not the bar reminder list. "
+            "Say the tool result back once."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "utterance": {
+                    "type": "string",
+                    "description": "What the user said, for example 'pasta timer ten minutes'.",
+                },
+            },
+            "required": ["utterance"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "run_shell",
         "description": (
             "Run a shell command. Disabled unless the user turned it on in config. "
@@ -1364,6 +1387,13 @@ class Executor:
                 return ("close", match[1].lower())
         return None
 
+    def _tool_kitchen_timer(self, utterance: str = "") -> Result:
+        from .kitchen_timers import reply_to
+        said = reply_to(utterance)
+        if said is None:
+            return Result(False, "That is not a kitchen timer. These are minute countdowns, not a clock time.")
+        return Result(True, said)
+
     def call(self, name: str, args: dict, *, parallel: bool = False) -> Result:
         if parallel and self.parallel_key(name, args) is not None:
             with self._lock:
@@ -1516,6 +1546,8 @@ class Executor:
             return f'watch terminal {args.get("target", "") or "(busy pane)"}'
         if name == "system_query":
             return f'look up system {args.get("topic", "")}'
+        if name == "kitchen_timer":
+            return f'kitchen timer {args.get("utterance", "")!r}'
         if name == "remember":
             action = args.get("action", "")
             if action == "list":
