@@ -9,6 +9,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from omarchy_voice.kitchen_timers import KitchenClient, parse_utterance, reply_to
@@ -136,6 +137,49 @@ class PhraseTests(unittest.TestCase):
         self.assertIsNone(parse_utterance("remind me at four to call the vet"))
         self.assertIsNone(reply_to("remind me at four", self.client))
         self.assertEqual(Recorder.records, [])
+
+    def test_a_name_that_is_not_title_case_can_be_checked_and_cancelled(self):
+        Recorder.timers = [
+            {
+                "id": "bbq",
+                "name": "BBQ",
+                "minutes": 10,
+                "status": "done",
+                "source": "voice",
+                "remainingSeconds": 0,
+            },
+            {
+                "id": "mac",
+                "name": "mac and cheese",
+                "minutes": 12,
+                "status": "running",
+                "source": "touch",
+                "remainingSeconds": 90,
+            },
+        ]
+        heard = reply_to("how long on the bbq", self.client)
+        self.assertEqual(heard, "BBQ is done.")
+        cheese = reply_to("how long on the mac and cheese", self.client)
+        self.assertIn("mac and cheese has", cheese)
+        cancelled = reply_to("cancel the bbq timer", self.client)
+        self.assertEqual(cancelled, "Cancelled the BBQ timer.")
+        self.assertEqual([timer["name"] for timer in Recorder.timers], ["mac and cheese"])
+
+
+class AnnounceTests(unittest.TestCase):
+    def test_the_desktop_line_is_the_notification_body(self):
+        from omarchy_voice.cli import cmd_announce
+
+        feedback = mock.Mock()
+
+        class Args:
+            text = ["Pasta", "is", "done"]
+
+        with mock.patch("omarchy_voice.feedback.Feedback", return_value=feedback):
+            code = cmd_announce(Args(), object())
+        self.assertEqual(code, 0)
+        feedback.notify.assert_called_once_with("Kitchen", "Pasta is done", urgency="normal")
+        feedback._speak_now.assert_called_once_with("Pasta is done")
 
 
 if __name__ == "__main__":

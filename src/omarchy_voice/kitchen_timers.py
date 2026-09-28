@@ -166,8 +166,11 @@ def _remaining_phrase(timer: dict) -> str:
 
 
 def _find(timers: list[dict], name: str) -> list[dict]:
-    wanted = name.lower()
-    return [timer for timer in timers if str(timer.get("name") or "").lower() == wanted]
+    wanted = re.sub(r"\s+", " ", (name or "").strip()).lower()
+    return [
+        timer for timer in timers
+        if re.sub(r"\s+", " ", str(timer.get("name") or "").strip()).lower() == wanted
+    ]
 
 
 def speak(parsed: dict, payload: dict) -> str:

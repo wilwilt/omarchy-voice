@@ -37,7 +37,7 @@ def cmd_announce(args, config) -> int:
         print("error: announce needs the words to say", file=sys.stderr)
         return 2
     feedback = Feedback(config)
-    feedback.notify(text, urgency="normal")
+    feedback.notify("Kitchen", text, urgency="normal")
     feedback._speak_now(text)
     return 0
 
