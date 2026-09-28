@@ -826,7 +826,7 @@ class RealtimeSession:
                 self.executor.call, "kitchen_timer", {"utterance": text})
             said = result.output if result.ok else result.as_tool_result()
             self.feedback.log(f"timer   {text!r} -> {said!r}")
-            self.feedback.notify(said)
+            self.feedback.notify("Kitchen", said)
             self.feedback.speak(said)
             return said
         self._user_turn_since_hold = True
@@ -890,7 +890,7 @@ class RealtimeSession:
             self._transcript = ""
             if said:
                 self.feedback.log(f"reply   {said!r}")
-                self.feedback.notify(said)
+                self.feedback.notify("Oma", said)
         elif kind == "conversation.item.input_audio_transcription.completed":
             heard = (event.get("transcript") or "").strip()
             if heard:

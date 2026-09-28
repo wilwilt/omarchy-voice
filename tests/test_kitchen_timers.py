@@ -133,6 +133,26 @@ class PhraseTests(unittest.TestCase):
         self.assertEqual(rest, "Cancelled 1 timer.")
         self.assertEqual(reply_to("check timers", self.client), "No timers.")
 
+    def test_hyphenated_and_compound_lengths(self):
+        cases = [
+            ("Set a 10-minute pasta timer.", "pasta", 10),
+            ("Set a ten-minute pasta timer", "pasta", 10),
+            ("set a twenty five minute rice timer", "rice", 25),
+            ("set a twenty-five minute rice timer", "rice", 25),
+            ("rice timer twenty five minutes", "rice", 25),
+        ]
+        for phrase, name, minutes in cases:
+            with self.subTest(phrase=phrase):
+                parsed = parse_utterance(phrase)
+                self.assertIsNotNone(parsed)
+                self.assertEqual(parsed["action"], "start")
+                self.assertEqual(parsed["name"], name)
+                self.assertEqual(parsed["minutes"], minutes)
+
+    def test_cancel_the_timer_clears_the_unnamed_one(self):
+        self.assertEqual(parse_utterance("cancel the timer"), {"action": "cancel", "name": "Timer"})
+        self.assertEqual(parse_utterance("cancel timer"), {"action": "cancel", "name": "Timer"})
+
     def test_a_clock_reminder_is_not_a_timer(self):
         self.assertIsNone(parse_utterance("remind me at four to call the vet"))
         self.assertIsNone(reply_to("remind me at four", self.client))

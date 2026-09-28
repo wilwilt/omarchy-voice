@@ -24,7 +24,13 @@ TENS = {
     "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
 MAX_MINUTES = 24 * 60
-_NUMBER = r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety(?:[ -](?:one|two|three|four|five|six|seven|eight|nine))?)"
+_ONES_WORD = r"one|two|three|four|five|six|seven|eight|nine"
+_TENS_WORD = r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
+_NUMBER = (
+    r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    rf"(?:{_TENS_WORD})(?:[ -](?:{_ONES_WORD}))?)"
+)
 
 
 def kitchen_base_url() -> str:
@@ -33,6 +39,7 @@ def kitchen_base_url() -> str:
 
 def normalize(text: str) -> str:
     words = re.sub(r"[^a-z0-9\s-]", " ", (text or "").lower())
+    words = words.replace("-", " ")
     words = re.sub(r"\s+", " ", words).strip()
     words = re.sub(r"^(?:hey |ok )?(?:buzz|oma|omar|ohma|alma) ", "", words)
     return words.strip()
@@ -80,6 +87,8 @@ def parse_utterance(text: str) -> dict | None:
         return {"action": "check", "name": _name(how_long.group(1))}
     if heard in {"cancel all timers", "cancel all the timers"}:
         return {"action": "cancel_all"}
+    if heard in {"cancel the timer", "cancel timer"}:
+        return {"action": "cancel", "name": "Timer"}
     cancel = re.fullmatch(r"cancel (?:the )?(.+?) timer", heard)
     if cancel:
         return {"action": "cancel", "name": _name(cancel.group(1))}
