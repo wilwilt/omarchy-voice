@@ -94,6 +94,7 @@ def _start(name: str, token: str) -> dict | None:
 
 def _name(raw: str) -> str:
     cleaned = re.sub(r"\s+", " ", (raw or "").strip())
+    cleaned = re.sub(r"^(?:the|my)\s+", "", cleaned)
     if not cleaned or cleaned == "timer":
         return "Timer"
     return cleaned
