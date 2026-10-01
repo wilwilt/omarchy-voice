@@ -26,10 +26,14 @@ TENS = {
 MAX_MINUTES = 24 * 60
 _ONES_WORD = r"one|two|three|four|five|six|seven|eight|nine"
 _TENS_WORD = r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
-_NUMBER = (
-    r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+_UNDER_HUNDRED = (
+    r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
     r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
     rf"(?:{_TENS_WORD})(?:[ -](?:{_ONES_WORD}))?)"
+)
+# Hundreds before under-hundred so "one hundred" is not cut off at "one".
+_NUMBER = (
+    rf"(\d+|zero|(?:{_ONES_WORD}) hundred(?:(?: and)?[ -]{_UNDER_HUNDRED})?|{_UNDER_HUNDRED})"
 )
 
 
@@ -49,7 +53,23 @@ def parse_number(token: str) -> int | None:
     token = token.replace("-", " ").strip().lower()
     if token.isdigit():
         return int(token)
+    if token == "zero":
+        return 0
     parts = token.split()
+    if "hundred" in parts:
+        idx = parts.index("hundred")
+        left, right = parts[:idx], parts[idx + 1 :]
+        if len(left) != 1 or left[0] not in ONES or ONES[left[0]] > 9:
+            return None
+        if right and right[0] == "and":
+            right = right[1:]
+        hundreds = ONES[left[0]] * 100
+        if not right:
+            return hundreds
+        rest = parse_number(" ".join(right))
+        if rest is None or rest < 1 or rest >= 100:
+            return None
+        return hundreds + rest
     if len(parts) == 1:
         if parts[0] in ONES:
             return ONES[parts[0]]
@@ -61,11 +81,15 @@ def parse_number(token: str) -> int | None:
     return None
 
 
-def _minutes(token: str) -> int | None:
+def _start(name: str, token: str) -> dict | None:
     value = parse_number(token)
-    if value is None or value < 1 or value > MAX_MINUTES:
+    if value is None:
         return None
-    return value
+    if value < 1:
+        return {"action": "invalid", "error": "A timer needs at least one minute."}
+    if value > MAX_MINUTES:
+        return None
+    return {"action": "start", "name": _name(name), "minutes": value}
 
 
 def _name(raw: str) -> str:
@@ -94,20 +118,20 @@ def parse_utterance(text: str) -> dict | None:
         return {"action": "cancel", "name": _name(cancel.group(1))}
     bare = re.fullmatch(rf"(?:set |start )?(?:a |an )?timer for {_NUMBER} minutes?", heard)
     if bare:
-        minutes = _minutes(bare.group(1))
-        return {"action": "start", "name": "Timer", "minutes": minutes} if minutes else None
+        return _start("Timer", bare.group(1))
+    named_after = re.fullmatch(
+        rf"(?:set |start )?(?:a |an )?{_NUMBER} minutes? timer for (.+)", heard)
+    if named_after:
+        return _start(named_after.group(2), named_after.group(1))
     unnamed = re.fullmatch(rf"(?:set |start )?(?:a |an )?{_NUMBER} minutes? timer", heard)
     if unnamed:
-        minutes = _minutes(unnamed.group(1))
-        return {"action": "start", "name": "Timer", "minutes": minutes} if minutes else None
+        return _start("Timer", unnamed.group(1))
     named = re.fullmatch(rf"(?:set |start )?(?:a |an )?{_NUMBER} minutes? (.+?) timer", heard)
     if named:
-        minutes = _minutes(named.group(1))
-        return {"action": "start", "name": _name(named.group(2)), "minutes": minutes} if minutes else None
+        return _start(named.group(2), named.group(1))
     leading = re.fullmatch(rf"(.+?) timer (?:for )?{_NUMBER} minutes?", heard)
     if leading:
-        minutes = _minutes(leading.group(2))
-        return {"action": "start", "name": _name(leading.group(1)), "minutes": minutes} if minutes else None
+        return _start(leading.group(1), leading.group(2))
     return None
 
 
@@ -229,6 +253,8 @@ def reply_to(text: str, client: KitchenClient | None = None) -> str | None:
     parsed = parse_utterance(text)
     if parsed is None:
         return None
+    if parsed["action"] == "invalid":
+        return parsed["error"]
     api = client or KitchenClient()
     if parsed["action"] == "start":
         payload = api.start(parsed["name"], parsed["minutes"])

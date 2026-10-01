@@ -149,6 +149,33 @@ class PhraseTests(unittest.TestCase):
                 self.assertEqual(parsed["name"], name)
                 self.assertEqual(parsed["minutes"], minutes)
 
+    def test_spoken_hundreds_and_timer_for_name(self):
+        cases = [
+            ("set a one hundred minute timer", "Timer", 100),
+            ("set a one hundred and twenty minute timer", "Timer", 120),
+            ("set a one hundred twenty minute timer", "Timer", 120),
+            ("one hundred minute pasta timer", "pasta", 100),
+            ("set a twenty minute timer for pasta", "pasta", 20),
+            ("set a 120 minute timer", "Timer", 120),
+        ]
+        for phrase, name, minutes in cases:
+            with self.subTest(phrase=phrase):
+                parsed = parse_utterance(phrase)
+                self.assertIsNotNone(parsed)
+                self.assertEqual(parsed["action"], "start")
+                self.assertEqual(parsed["name"], name)
+                self.assertEqual(parsed["minutes"], minutes)
+
+    def test_zero_minute_timer_answers_directly(self):
+        parsed = parse_utterance("set a zero minute timer")
+        self.assertEqual(
+            parsed,
+            {"action": "invalid", "error": "A timer needs at least one minute."},
+        )
+        self.assertEqual(reply_to("set a zero minute timer", self.client),
+                         "A timer needs at least one minute.")
+        self.assertEqual(Recorder.records, [])
+
     def test_cancel_the_timer_clears_the_unnamed_one(self):
         self.assertEqual(parse_utterance("cancel the timer"), {"action": "cancel", "name": "Timer"})
         self.assertEqual(parse_utterance("cancel timer"), {"action": "cancel", "name": "Timer"})
